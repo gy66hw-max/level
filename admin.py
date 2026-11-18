@@ -1,4 +1,5 @@
 import os
+import html
 import json
 from datetime import datetime, timedelta
 from flask import Blueprint, render_template_string, request, redirect, url_for, session, flash, jsonify
@@ -16,6 +17,25 @@ def user_can(perm):
     if session.get('role') == 'admin':
         return True
     return has_permission(perm)
+
+def safe_int(val, default=0):
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+def safe_float(val, default=0.0):
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+def js_str(val):
+    """تمرير النصوص بأمان إلى دوال JavaScript داخل سمات HTML دون كسر علامات الاقتباس"""
+    text = str(val) if val is not None else ''
+    return html.escape(json.dumps(text, ensure_ascii=False), quote=True)
+
+admin_bp.add_app_template_global(js_str)
 
 def ensure_db_schema():
     conn = db.get_db()
@@ -84,17 +104,38 @@ def allowed_file(filename):
 
 COMMON_STYLE = '''
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap');
     
     * {
         box-sizing: border-box;
     }
 
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #040711;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #06b6d4, #6366f1);
+        border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, #22d3ee, #ec4899);
+    }
+
     body {
         font-family: 'Tajawal', sans-serif;
-        background: linear-gradient(-45deg, #070a12, #0d1527, #150f2a, #09131f);
-        background-size: 400% 400%;
-        animation: gradientAnimation 15s ease infinite;
+        background-color: #040711;
+        background-image: 
+            radial-gradient(circle at 12% 18%, rgba(6, 182, 212, 0.16) 0%, transparent 40%),
+            radial-gradient(circle at 88% 15%, rgba(139, 92, 246, 0.18) 0%, transparent 42%),
+            radial-gradient(circle at 50% 90%, rgba(236, 72, 153, 0.12) 0%, transparent 48%),
+            linear-gradient(-45deg, #040711, #091124, #110c24, #061320);
+        background-size: 100% 100%, 100% 100%, 100% 100%, 400% 400%;
+        background-attachment: fixed;
+        animation: gradientAnimation 16s ease infinite;
         color: #f8fafc;
         min-height: 100vh;
         max-width: 100%;
@@ -102,9 +143,9 @@ COMMON_STYLE = '''
     }
 
     @keyframes gradientAnimation {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
+        0% { background-position: 0% 0%, 0% 0%, 0% 0%, 0% 50%; }
+        50% { background-position: 0% 0%, 0% 0%, 0% 0%, 100% 50%; }
+        100% { background-position: 0% 0%, 0% 0%, 0% 0%, 0% 50%; }
     }
 
     @keyframes activeGlow {
@@ -116,7 +157,14 @@ COMMON_STYLE = '''
     .animated-section-bg {
         background-size: 200% 200% !important;
         animation: activeGlow 6s ease infinite !important;
-        border-radius: 14px;
+        border-radius: 18px;
+    }
+
+    .moving-title {
+        background: linear-gradient(90deg, #ffffff 0%, #38bdf8 45%, #c084fc 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        filter: drop-shadow(0 4px 18px rgba(56, 189, 248, 0.25));
     }
 
     .moving-icon {
@@ -131,90 +179,151 @@ COMMON_STYLE = '''
     }
 
     .glass-card {
-        background: rgba(17, 24, 39, 0.92);
-        backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: linear-gradient(155deg, rgba(15, 23, 42, 0.86), rgba(9, 14, 28, 0.94));
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 20px;
+        box-shadow: 
+            0 14px 36px rgba(0, 0, 0, 0.6),
+            inset 0 1px 0 rgba(255, 255, 255, 0.09);
+        transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    }
+
+    .glass-card:hover {
+        border-color: rgba(148, 163, 184, 0.3);
+    }
+
+    .empty-state-box {
+        background: rgba(15, 23, 42, 0.65);
+        border: 1px dashed rgba(148, 163, 184, 0.35);
         border-radius: 16px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+        color: #cbd5e1;
+        padding: 28px 16px;
+        text-align: center;
+        font-weight: 700;
+        font-size: 1.05rem;
     }
 
     .btn-glow-pink {
-        background: linear-gradient(135deg, #ec4899, #f43f5e);
-        color: white; font-weight: 700; border: none;
-        box-shadow: 0 0 15px rgba(236, 72, 153, 0.4);
+        background: linear-gradient(135deg, #ec4899, #e11d48);
+        color: white; font-weight: 700; border: 1px solid rgba(255, 255, 255, 0.18);
+        box-shadow: 0 4px 20px rgba(236, 72, 153, 0.42);
+        transition: all 0.25s ease;
     }
+    .btn-glow-pink:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 26px rgba(236, 72, 153, 0.65);
+        color: white;
+    }
+
     .btn-glow-purple {
-        background: linear-gradient(135deg, #7c3aed, #6366f1);
-        color: white; font-weight: 700; border: none;
-        box-shadow: 0 0 15px rgba(124, 58, 237, 0.4);
+        background: linear-gradient(135deg, #8b5cf6, #4f46e5);
+        color: white; font-weight: 700; border: 1px solid rgba(255, 255, 255, 0.18);
+        box-shadow: 0 4px 20px rgba(139, 92, 246, 0.42);
+        transition: all 0.25s ease;
     }
+    .btn-glow-purple:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 26px rgba(139, 92, 246, 0.65);
+        color: white;
+    }
+
     .btn-glow-green {
         background: linear-gradient(135deg, #059669, #10b981);
-        color: white; font-weight: 700; border: none;
-        box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+        color: white; font-weight: 700; border: 1px solid rgba(255, 255, 255, 0.18);
+        box-shadow: 0 4px 20px rgba(16, 185, 129, 0.42);
+        transition: all 0.25s ease;
     }
+    .btn-glow-green:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 26px rgba(16, 185, 129, 0.65);
+        color: white;
+    }
+
     .btn-glow-cyan {
         background: linear-gradient(135deg, #0284c7, #06b6d4);
-        color: white; font-weight: 700; border: none;
-        box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+        color: white; font-weight: 700; border: 1px solid rgba(255, 255, 255, 0.18);
+        box-shadow: 0 4px 20px rgba(6, 182, 212, 0.42);
+        transition: all 0.25s ease;
+    }
+    .btn-glow-cyan:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 26px rgba(6, 182, 212, 0.65);
+        color: white;
     }
 
     .nav-pills .nav-link {
         color: #cbd5e1;
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 12px;
+        background: rgba(15, 23, 42, 0.72);
+        backdrop-filter: blur(10px);
+        border-radius: 16px;
         margin: 4px;
         font-weight: 700;
-        transition: all 0.3s ease;
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .nav-pills .nav-link:hover {
+        transform: translateY(-2px);
+        background: rgba(30, 41, 59, 0.9);
     }
     .nav-pills .nav-link.active {
-        background: rgba(255, 255, 255, 0.18) !important;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06)) !important;
         border-color: currentColor;
-        box-shadow: 0 0 15px rgba(255, 255, 255, 0.25);
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45), inset 0 0 14px rgba(255, 255, 255, 0.16);
+        transform: translateY(-2px);
     }
 
     .status-badge-active {
-        background: rgba(16, 185, 129, 0.2); color: #34d399;
-        border: 1px solid #10b981; padding: 4px 12px; border-radius: 20px; font-weight: bold;
+        background: rgba(16, 185, 129, 0.18); color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.65); padding: 4px 14px; border-radius: 20px; font-weight: bold;
+        box-shadow: 0 0 12px rgba(16, 185, 129, 0.22);
     }
     .status-badge-busy {
-        background: rgba(239, 68, 68, 0.2); color: #f87171;
-        border: 1px solid #ef4444; padding: 4px 12px; border-radius: 20px; font-weight: bold;
+        background: rgba(244, 63, 94, 0.18); color: #fb7185;
+        border: 1px solid rgba(244, 63, 94, 0.65); padding: 4px 14px; border-radius: 20px; font-weight: bold;
+        box-shadow: 0 0 12px rgba(244, 63, 94, 0.22);
     }
 
     .countdown-timer {
-        font-size: 1.3rem; font-weight: 900; letter-spacing: 2px;
-        color: #38bdf8; background: #090d16; padding: 6px 14px;
-        border-radius: 10px; border: 1px solid #0284c7;
+        font-size: 1.35rem; font-weight: 900; letter-spacing: 2px;
+        color: #38bdf8; background: rgba(5, 9, 18, 0.9); padding: 7px 16px;
+        border-radius: 12px; border: 1px solid rgba(6, 182, 212, 0.7);
+        box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.65), 0 0 14px rgba(56, 189, 248, 0.2);
     }
-    .timer-ended { color: #ef4444 !important; border-color: #ef4444 !important; animation: blink 1s infinite; }
+    .timer-ended { color: #fb7185 !important; border-color: #fb7185 !important; animation: blink 1s infinite; }
     @keyframes blink { 50% { opacity: 0.4; } }
 
     .table-dark-custom { 
-        background-color: #0b1120 !important; 
+        background-color: #080d1a !important; 
         color: #f8fafc !important; 
-        border-radius: 12px; 
+        border-radius: 14px; 
         overflow: hidden; 
-        border: 1px solid #1e293b !important;
-        --bs-table-bg: #0b1120 !important;
+        border: 1px solid rgba(51, 65, 85, 0.7) !important;
+        --bs-table-bg: #080d1a !important;
         --bs-table-color: #f8fafc !important;
     }
     .table-dark-custom th { 
-        background-color: #1e293b !important; 
+        background: linear-gradient(180deg, #1e293b, #141d2e) !important; 
         color: #38bdf8 !important; 
         font-weight: 800 !important;
         border-color: #334155 !important; 
-        padding: 12px 14px !important;
+        padding: 13px 15px !important;
     }
     .table-dark-custom td { 
-        background-color: #0b1120 !important; 
+        background-color: #080d1a !important; 
         color: #f8fafc !important; 
-        border-color: #1e293b !important; 
-        padding: 12px 14px !important;
+        border-color: rgba(30, 41, 59, 0.85) !important; 
+        padding: 12px 15px !important;
+        transition: background-color 0.2s ease;
     }
     .table-dark-custom tbody tr:hover td { 
-        background-color: #131d31 !important; 
+        background-color: #131e36 !important; 
+    }
+
+    .form-control:focus, .form-select:focus {
+        border-color: #38bdf8 !important;
+        box-shadow: 0 0 0 0.2rem rgba(56, 189, 248, 0.22) !important;
     }
 
     optgroup { background-color: #1f293d; color: #38bdf8; font-weight: bold; }
@@ -222,11 +331,12 @@ COMMON_STYLE = '''
 
     .flash-alert-box {
         transition: opacity 0.6s ease, transform 0.6s ease;
+        border-radius: 14px;
     }
 
     @media (max-width: 768px) {
         body { padding: 10px !important; }
-        .glass-card { padding: 15px !important; border-radius: 12px !important; }
+        .glass-card { padding: 15px !important; border-radius: 14px !important; }
         .moving-title { font-size: 1.6rem !important; }
         .nav-pills .nav-link { padding: 8px 12px !important; font-size: 0.9rem !important; }
         .btn-glow-pink, .btn-glow-purple, .btn-glow-green, .btn-glow-cyan {
@@ -282,6 +392,9 @@ def dashboard():
         ORDER BY category_name ASC, items.name ASC
     ''').fetchall()
 
+    can_edit_price = (session.get('role') == 'admin' or 'edit_item_price' in session.get('permissions', []))
+    can_delete_sp = (session.get('role') == 'admin' or 'delete_session_product' in session.get('permissions', []))
+
     return render_template_string('''
     <!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -292,11 +405,11 @@ def dashboard():
     </head>
     <body>
         <div class="container my-3">
-            <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+            <div class="glass-card p-3 mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <span class="fs-3 fw-bold text-white">الإدارة</span>
-                    <span class="badge bg-primary fs-6 px-3 py-2 rounded-pill">⚡ {{ 'مدير عام' if session['role'] == 'admin' else 'موظف' }}</span>
-                    <span class="badge bg-secondary fs-6 px-3 py-2 rounded-pill">{{ session['full_name'] }}</span>
+                    <span class="fs-4 fw-black text-info">⚡ LEVEL MAX</span>
+                    <span class="badge bg-primary fs-6 px-3 py-2 rounded-pill">{{ 'مدير عام' if session['role'] == 'admin' else 'موظف' }}</span>
+                    <span class="badge bg-dark border border-secondary fs-6 px-3 py-2 rounded-pill text-light">{{ session['full_name'] }}</span>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
                     <a href="/" class="btn btn-outline-info rounded-pill px-3 fw-bold">🏠 الواجهة الرئيسية</a>
@@ -351,7 +464,7 @@ def dashboard():
             <div class="tab-content">
                 {% for cat in categories %}
                 <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="cat-{{ cat['id'] }}">
-                    <div class="glass-card p-4 mb-4" style="border-top: 4px solid {{ cat['color'] }} !important; box-shadow: 0 0 25px {{ cat['color'] }}30;">
+                    <div class="glass-card p-4 mb-4" style="border-top: 4px solid {{ cat['color'] }} !important; box-shadow: 0 0 28px {{ cat['color'] }}30;">
                         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
                             <h3 class="fw-bold m-0 d-flex align-items-center gap-2">
                                 <span class="moving-icon fs-3">{{ cat['icon'] }}</span>
@@ -361,30 +474,30 @@ def dashboard():
                             <div class="d-flex gap-2 flex-wrap">
                                 {% if cat['type'] == 'game' %}
                                     {% if session['role'] == 'admin' or 'manage_items' in session['permissions'] %}
-                                    <button class="btn text-white fw-bold px-3 py-2 rounded-pill" 
+                                    <button class="btn text-white fw-bold px-3 py-2 rounded-pill shadow-sm" 
                                             style="background-color: {{ cat['color'] }};" 
                                             data-bs-toggle="modal" data-bs-target="#addItemModal" 
-                                            onclick="setCategory('{{ cat['key'] }}')">
+                                            onclick="setCategory({{ js_str(cat['key']) }})">
                                         + إضافة ميز/جهاز جديد
                                     </button>
                                     {% endif %}
                                 {% else %}
                                     {% if session['role'] == 'admin' or 'manage_products' in session['permissions'] %}
-                                    <button class="btn text-white fw-bold px-3 py-2 rounded-pill" 
+                                    <button class="btn text-white fw-bold px-3 py-2 rounded-pill shadow-sm" 
                                             style="background-color: {{ cat['color'] }};" 
                                             data-bs-toggle="modal" data-bs-target="#addProductModal" 
-                                            onclick="setProductCategory('{{ cat['name'] }}')">
+                                            onclick="setProductCategory({{ js_str(cat['name']) }})">
                                         + إضافة منتج/خدمة بهذا القسم
                                     </button>
                                     {% endif %}
                                 {% endif %}
 
                                 {% if session['role'] == 'admin' or 'manage_sections' in session['permissions'] %}
-                                <a href="{{ url_for('admin.delete_section', section_id=cat['id']) }}" 
-                                   class="btn btn-outline-danger btn-sm rounded-pill px-3 d-flex align-items-center gap-1"
-                                   onclick="return confirm('هل أنت تأكد من حذف هذا القسم بالكامل بما فيه من عناصر؟');">
-                                    🗑️ حذف القسم
-                                </a>
+                                <form method="POST" action="{{ url_for('admin.delete_section', section_id=cat['id']) }}" class="d-inline" onsubmit="return confirm('هل أنت متأكد من حذف هذا القسم بالكامل بما فيه من عناصر؟');">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3 d-flex align-items-center gap-1">
+                                        🗑️ حذف القسم
+                                    </button>
+                                </form>
                                 {% endif %}
                             </div>
                         </div>
@@ -392,7 +505,7 @@ def dashboard():
                         {% if cat['type'] == 'game' %}
                             {{ render_items(items, cat['key'], active_sessions, session_prods, products, free_items, cat['color']) }}
                         {% else %}
-                            {{ render_products(products, cat['name']) }}
+                            {{ render_products(products, cat['name'], cat['key']) }}
                         {% endif %}
                     </div>
                 </div>
@@ -625,8 +738,12 @@ def dashboard():
 
                         <div class="mb-3 p-3 bg-dark rounded border border-secondary">
                             <label class="fw-bold text-warning mb-1">سعر اللعب الجديد (د.ع / للساعة أو للكيم):</label>
-                            <input type="number" step="250" name="custom_price" id="renewSessionPrice" class="form-control bg-secondary text-white border-0 fs-5 fw-bold" required>
+                            <input type="number" step="250" name="custom_price" id="renewSessionPrice" class="form-control bg-secondary text-white border-0 fs-5 fw-bold" {% if not can_edit_price %}readonly{% endif %} required>
+                            {% if can_edit_price %}
                             <small class="text-light opacity-75 d-block mt-1">يمكنك إبقاء السعر ثابتاً كما هو أو تغييره لهذه الفترة.</small>
+                            {% else %}
+                            <small class="text-warning opacity-75 d-block mt-1">🔒 تعديل السعر الأساسي يتطلب صلاحية تعديل الأسعار.</small>
+                            {% endif %}
                         </div>
 
                         <div id="renewTimeDurationBox" class="p-3 bg-dark rounded border border-secondary mb-3">
@@ -671,8 +788,12 @@ def dashboard():
 
                         <div class="mb-3 p-3 bg-dark rounded border border-secondary">
                             <label class="fw-bold text-warning mb-1">سعر اللعب للجلسة (د.ع / للساعة أو للكيم):</label>
-                            <input type="number" step="250" name="custom_price" id="startSessionPrice" class="form-control bg-secondary text-white border-0 fs-5 fw-bold" required>
+                            <input type="number" step="250" name="custom_price" id="startSessionPrice" class="form-control bg-secondary text-white border-0 fs-5 fw-bold" {% if not can_edit_price %}readonly{% endif %} required>
+                            {% if can_edit_price %}
                             <small class="text-light opacity-75 d-block mt-1">يمكنك تعديل السعر المباشر هنا قبل بدء الحجز.</small>
+                            {% else %}
+                            <small class="text-warning opacity-75 d-block mt-1">🔒 تعديل السعر الأساسي يتطلب صلاحية تعديل الأسعار.</small>
+                            {% endif %}
                         </div>
 
                         <div id="timeDurationBox" class="p-3 bg-dark rounded border border-secondary mb-3">
@@ -722,19 +843,23 @@ def dashboard():
         <div class="modal fade" id="addProductModal" tabindex="-1">
             <div class="modal-dialog">
                 <form method="POST" action="{{ url_for('admin.create_product') }}" enctype="multipart/form-data" class="modal-content glass-card text-white border-secondary">
-                    <div class="modal-header border-secondary"><h5 class="modal-title">إضافة منتج أو خدمة جديدة</h5></div>
+                    <div class="modal-header border-secondary"><h5 class="modal-title fw-bold text-warning">🥤 إضافة منتج أو خدمة جديدة</h5></div>
                     <div class="modal-body">
-                        <div class="mb-3"><label>اسم المنتج / المشروب / الخدمة</label><input type="text" name="name" class="form-control bg-dark text-white border-secondary" required></div>
-                        <div class="mb-3"><label>التصنيف</label>
-                            <input type="text" name="category" id="productCategoryInput" class="form-control bg-dark text-white border-secondary" required>
+                        <div class="mb-3"><label class="fw-bold mb-1">اسم المنتج / المشروب / الخدمة</label><input type="text" name="name" class="form-control bg-dark text-white border-secondary" required></div>
+                        <div class="mb-3"><label class="fw-bold mb-1">القسم / التصنيف</label>
+                            <select name="category" id="productCategoryInput" class="form-select bg-dark text-white border-secondary" required>
+                                {% for cat in categories if cat['type'] != 'game' %}
+                                <option value="{{ cat['name'].strip() }}">{{ cat['icon'] }} {{ cat['name'].strip() }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
-                        <div class="mb-3"><label>السعر (د.ع)</label><input type="number" step="250" name="price" class="form-control bg-dark text-white border-secondary" required></div>
+                        <div class="mb-3"><label class="fw-bold mb-1">السعر (د.ع)</label><input type="number" step="250" name="price" class="form-control bg-dark text-white border-secondary" required></div>
                         <div class="mb-3">
-                            <label>الصورة (اختياري)</label>
+                            <label class="fw-bold mb-1">الصورة (اختياري)</label>
                             <input type="file" name="image_file" class="form-control bg-dark text-white border-secondary" accept="image/*">
                         </div>
                     </div>
-                    <div class="modal-footer border-secondary"><button type="submit" class="btn btn-glow-pink w-100">حفظ المنتج</button></div>
+                    <div class="modal-footer border-secondary"><button type="submit" class="btn btn-glow-pink w-100 py-2 fs-5">حفظ المنتج ✅</button></div>
                 </form>
             </div>
         </div>
@@ -743,9 +868,34 @@ def dashboard():
         <script>
             let currentDirectUnitPrice = 0;
             let currentPreviewSessionData = null;
+            const canDeleteSessionProduct = {{ 'true' if can_delete_sp else 'false' }};
+
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text || '';
+                return div.innerHTML;
+            }
 
             function setCategory(cat) { document.getElementById('itemCategory').value = cat; }
-            function setProductCategory(catName) { document.getElementById('productCategoryInput').value = catName; }
+            function setProductCategory(catName) {
+                const sel = document.getElementById('productCategoryInput');
+                const cleanName = (catName || '').trim();
+                let found = false;
+                for (let i = 0; i < sel.options.length; i++) {
+                    if (sel.options[i].value.trim() === cleanName) {
+                        sel.selectedIndex = i;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found && cleanName) {
+                    const opt = document.createElement('option');
+                    opt.value = cleanName;
+                    opt.text = cleanName;
+                    sel.add(opt);
+                    sel.value = cleanName;
+                }
+            }
             
             function prepareStartSession(itemId, itemName, itemPrice, itemPlayMode) {
                 document.getElementById('startSessionItemId').value = itemId;
@@ -849,8 +999,8 @@ def dashboard():
                         let carriedHtml = data.carried_over_cost > 0 ? `<p class="mb-1 text-info fs-6">مبلغ مرحل من جولات/نقل سابق: <strong>${data.carried_over_cost.toLocaleString()} د.ع</strong></p>` : '';
                         let html = `
                             <div class="p-3 bg-dark rounded border border-secondary mb-3">
-                                <h5>اسم العنصر: <span class="text-info">${data.item_name}</span></h5>
-                                <p class="mb-1">نوع الجلسة: <strong>${data.session_type}</strong></p>
+                                <h5>اسم العنصر: <span class="text-info">${escapeHtml(data.item_name)}</span></h5>
+                                <p class="mb-1">نوع الجلسة: <strong>${escapeHtml(data.session_type)}</strong></p>
                                 ${(data.session_type === 'بالوقت' || data.session_type === 'وقت مفتوح') ? `<p class="mb-1">الوقت المحتسب: <strong>${data.duration_minutes} دقيقة</strong></p>` : ''}
                                 ${carriedHtml}
                                 <p class="mb-0 text-warning fs-5">مجموع سعر اللعب للجلسة: <strong>${data.play_cost.toLocaleString()} د.ع</strong></p>
@@ -861,17 +1011,22 @@ def dashboard():
                         if (data.products && data.products.length > 0) {
                             html += '<ul class="list-group mb-3">';
                             data.products.forEach(p => {
+                                let delForm = canDeleteSessionProduct ? `
+                                    <form method="POST" action="/admin/session/product/delete/${p.id}" style="display:inline;" onsubmit="return confirm('حذف الطلب؟')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+                                    </form>
+                                ` : '';
                                 html += `<li class="list-group-item bg-secondary text-white d-flex justify-content-between align-items-center">
-                                    <span>${p.product_name} (x${p.quantity})</span>
+                                    <span>${escapeHtml(p.product_name)} (x${p.quantity})</span>
                                     <div>
                                         <span class="text-warning fw-bold me-3">${p.total.toLocaleString()} د.ع</span>
-                                        <a href="/admin/session/product/delete/${p.id}" class="btn btn-sm btn-outline-danger" onclick="return confirm('حذف الطلب؟')">🗑️</a>
+                                        ${delForm}
                                     </div>
                                 </li>`;
                             });
                             html += '</ul>';
                         } else {
-                            html += '<div class="alert alert-secondary p-2 mb-3">لا توجد خدمات مضافة لهذه الجلسة.</div>';
+                            html += '<div class="empty-state-box py-2 mb-3">لا توجد خدمات مضافة لهذه الجلسة.</div>';
                         }
 
                         html += `
@@ -960,32 +1115,40 @@ def dashboard():
             });
         </script>
     </body></html>
-    ''', COMMON_STYLE=COMMON_STYLE, categories=categories, items=items, products=products, active_sessions=active_sessions, session_prods=session_prods, free_items=free_items)
+    ''', COMMON_STYLE=COMMON_STYLE, categories=categories, items=items, products=products, active_sessions=active_sessions, session_prods=session_prods, free_items=free_items, can_edit_price=can_edit_price, can_delete_sp=can_delete_sp)
 
-@admin_bp.add_app_template_global
 def render_items(items, target_cat, active_sessions, session_prods, products, free_items, cat_color="#ec4899"):
-    filtered = [i for i in items if i['category'] == target_cat]
+    filtered = [i for i in items if (i['category'] or '').strip() == (target_cat or '').strip()]
     if not filtered:
-        return Markup('<div class="alert alert-secondary text-center text-white py-3">لا يوجد أجهزة أو طاولات مضافة في هذا القسم حالياً.</div>')
+        return Markup('<div class="empty-state-box">لا يوجد أجهزة أو طاولات مضافة في هذا القسم حالياً.</div>')
     
-    html = '<div class="row">'
+    html_out = '<div class="row">'
     for item in filtered:
         active_session = next((s for s in active_sessions if s['item_id'] == item['id']), None)
         status_badge = '<span class="status-badge-busy">مشغول</span>' if active_session else '<span class="status-badge-active">متاح</span>'
         
-        animated_style = f"background: linear-gradient(-45deg, rgba(15, 23, 42, 0.95), {cat_color}45, #0d1527, {cat_color}30);" if active_session else "background: rgba(31, 41, 61, 0.6);"
+        animated_style = f"background: linear-gradient(-45deg, rgba(15, 23, 42, 0.95), {cat_color}45, #0d1527, {cat_color}30);" if active_session else "background: rgba(17, 24, 39, 0.72);"
         animated_class = "animated-section-bg" if active_session else ""
+        safe_item_name = html.escape(str(item['name']))
+        js_item_name = js_str(item['name'])
         
-        html += f'''
+        edit_price_btn = f'<button class="btn btn-sm btn-outline-warning p-1 me-1" data-bs-toggle="modal" data-bs-target="#editPriceModal" onclick="prepareEditPrice({item["id"]}, {js_item_name}, {item["price"]})" title="تعديل السعر">✏️</button>' if user_can('edit_item_price') else ''
+        delete_item_form = f'''
+            <form method="POST" action="/admin/item/delete/{item["id"]}" style="display:inline;" onsubmit="return confirm('هل تريد حذف هذا العنصر؟');">
+                <button type="submit" class="btn btn-sm btn-outline-danger p-1" title="حذف">🗑️</button>
+            </form>
+        ''' if user_can('manage_items') else ''
+
+        html_out += f'''
         <div class="col-md-6 col-lg-4 mb-4">
-            <div class="glass-card p-3 h-100 d-flex flex-column justify-content-between {animated_class}" style="{animated_style} border: 1px solid {cat_color}50;">
+            <div class="glass-card p-3 h-100 d-flex flex-column justify-content-between {animated_class}" style="{animated_style} border: 1px solid {cat_color}55;">
                 <div>
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h3 class="fw-bold m-0 text-white">{item['name']}</h3>
+                        <h3 class="fw-bold m-0 text-white">{safe_item_name}</h3>
                         <div class="d-flex align-items-center gap-1">
                             {status_badge}
-                            {f'<button class="btn btn-sm btn-outline-warning p-1 me-1" data-bs-toggle="modal" data-bs-target="#editPriceModal" onclick="prepareEditPrice({item["id"]}, \'{item["name"]}\', {item["price"]})" title="تعديل السعر">✏️</button>' if user_can('edit_item_price') else ''}
-                            {f'<a href="/admin/item/delete/{item["id"]}" class="btn btn-sm btn-outline-danger p-1" onclick="return confirm(\'هل تريد حذف هذا العنصر؟\');">🗑️</a>' if user_can('manage_items') else ''}
+                            {edit_price_btn}
+                            {delete_item_form}
                         </div>
                     </div>
         '''
@@ -994,22 +1157,27 @@ def render_items(items, target_cat, active_sessions, session_prods, products, fr
             prods = session_prods.get(active_session['id'], [])
             prod_items_html = []
             for p in prods:
-                delete_btn = f"<a href='/admin/session/product/delete/{p['id']}' class='btn btn-sm text-danger p-0 me-1' title='حذف الطلب' onclick='return confirm(\"هل تريد حذف هذا الطلب؟\")'>✖</a>" if user_can('delete_session_product') else ""
-                prod_items_html.append(f"<li class='d-flex justify-content-between align-items-center text-white fs-6 py-1 border-bottom border-secondary'><span>• {p['product_name']} (x{p['quantity']})</span> <div><span class='text-warning fw-bold me-2'>{p['total']} د.ع</span>{delete_btn}</div></li>")
+                safe_prod_name = html.escape(str(p['product_name']))
+                delete_btn = f'''
+                    <form method="POST" action="/admin/session/product/delete/{p['id']}" style="display:inline;" onsubmit="return confirm('هل تريد حذف هذا الطلب؟')">
+                        <button type="submit" class="btn btn-sm text-danger p-0 me-1" title="حذف الطلب">✖</button>
+                    </form>
+                ''' if user_can('delete_session_product') else ""
+                prod_items_html.append(f"<li class='d-flex justify-content-between align-items-center text-white fs-6 py-1 border-bottom border-secondary'><span>• {safe_prod_name} (x{p['quantity']})</span> <div><span class='text-warning fw-bold me-2'>{p['total']} د.ع</span>{delete_btn}</div></li>")
             
             prod_html = "".join(prod_items_html)
             
             if active_session['session_type'] in ['بالكيم', 'بالجيم']:
-                html += f'''
-                <div class="text-center p-3 mb-3 rounded-3" style="background: rgba(0,0,0,0.4); border: 1px dashed {cat_color};">
+                html_out += f'''
+                <div class="text-center p-3 mb-3 rounded-3" style="background: rgba(0,0,0,0.42); border: 1px dashed {cat_color};">
                     <span class="badge fs-6 mb-2 px-3 py-2 rounded-pill" style="background-color: {cat_color}; color: #fff;">🎮 محجوز (نظام بالكيم)</span>
                     <div class="text-warning fw-bold fs-3 mt-1">{item['price']} د.ع</div>
                 </div>
                 '''
             elif active_session['session_type'] == 'وقت مفتوح':
-                start_time_attr = active_session['start_time'] if active_session['start_time'] else ""
-                html += f'''
-                <div class="text-center p-3 mb-3 rounded-3" style="background: rgba(0,0,0,0.4); border: 1px dashed {cat_color};">
+                start_time_attr = html.escape(str(active_session['start_time'])) if active_session['start_time'] else ""
+                html_out += f'''
+                <div class="text-center p-3 mb-3 rounded-3" style="background: rgba(0,0,0,0.42); border: 1px dashed {cat_color};">
                     <span class="badge fs-6 mb-2 px-3 py-2 rounded-pill bg-success text-white">🔓 محجوز (وقت مفتوح)</span>
                     <div class="text-warning fw-bold mt-2">السعر: {item['price']} د.ع / ساعة</div>
                     <small class="text-light opacity-75 d-block fw-bold mb-1">⏱️ الوقت المنقضي:</small>
@@ -1017,20 +1185,20 @@ def render_items(items, target_cat, active_sessions, session_prods, products, fr
                 </div>
                 '''
             else:
-                target_time_attr = active_session['target_end_time'] if active_session['target_end_time'] else ""
-                html += f'''
-                <div class="text-center p-3 mb-3 rounded-3" style="background: rgba(0,0,0,0.4); border: 1px dashed {cat_color};">
+                target_time_attr = html.escape(str(active_session['target_end_time'])) if active_session['target_end_time'] else ""
+                html_out += f'''
+                <div class="text-center p-3 mb-3 rounded-3" style="background: rgba(0,0,0,0.42); border: 1px dashed {cat_color};">
                     <div class="text-warning fw-bold mt-2">السعر: {item['price']} د.ع / ساعة</div>
                 '''
                 if target_time_attr:
-                    html += f'''
+                    html_out += f'''
                     <small class="text-light opacity-75 d-block fw-bold mb-1">⏱️ الوقت المتبقي للجلسة:</small>
                     <div class="countdown-timer d-inline-block" data-target="{target_time_attr}">00:00:00</div>
                     '''
-                html += '</div>'
+                html_out += '</div>'
 
-            html += f'''
-                <div class="p-2 mb-3 rounded" style="background: rgba(0,0,0,0.3);">
+            html_out += f'''
+                <div class="p-2 mb-3 rounded" style="background: rgba(0,0,0,0.32);">
                     <div class="fw-bold text-info mb-1 fs-6">🍔 الطلبات المضافة للجلسة:</div>
                     <ul class="list-unstyled mb-0 px-1">{prod_html if prod_html else '<li class="small text-light opacity-75">لا يوجد طلبات مضافة بعد</li>'}</ul>
                 </div>
@@ -1040,22 +1208,23 @@ def render_items(items, target_cat, active_sessions, session_prods, products, fr
             '''
             
             if user_can('transfer_session'):
-                html += f'''
-                <button class="btn btn-glow-purple btn-sm fw-bold w-100 py-2 fs-6 shadow" data-bs-toggle="modal" data-bs-target="#transferSessionModal" onclick="prepareTransferSession({active_session['id']}, '{item['name']}')">
+                html_out += f'''
+                <button class="btn btn-glow-purple btn-sm fw-bold w-100 py-2 fs-6 shadow" data-bs-toggle="modal" data-bs-target="#transferSessionModal" onclick="prepareTransferSession({active_session['id']}, {js_item_name})">
                     🔀 نقل الجلسة إلى ميز/قسم آخر
                 </button>
                 '''
 
             if user_can('start_session'):
-                html += f'''
-                <button class="btn btn-warning btn-sm fw-bold w-100 py-2 fs-6 shadow-sm" onclick="prepareRenewSession({active_session['id']}, '{item['name']}', {item['price']}, '{active_session['session_type']}')">
+                js_sess_type = js_str(active_session['session_type'])
+                html_out += f'''
+                <button class="btn btn-warning btn-sm fw-bold w-100 py-2 fs-6 shadow-sm" onclick="prepareRenewSession({active_session['id']}, {js_item_name}, {item['price']}, {js_sess_type})">
                     🔄 تجديد اللعب مرة أخرى
                 </button>
                 '''
             
             if user_can('add_product_to_session'):
-                options = '<option value="" disabled selected>-- اختر طعام / عصير / خدمة --</option>' + "".join([f"<option value='{p['id']}'>{p['name']} ({p['price']} د.ع)</option>" for p in products])
-                html += f'''
+                options = '<option value="" disabled selected>-- اختر طعام / عصير / خدمة --</option>' + "".join([f"<option value='{p['id']}'>{html.escape(str(p['name']))} ({p['price']} د.ع)</option>" for p in products])
+                html_out += f'''
                 <div class="p-2 rounded mt-1" style="background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(255, 255, 255, 0.15);">
                     <div class="small fw-bold text-warning mb-1">➕ إضافة طلب للجلسة:</div>
                     <form method="POST" action="/admin/session/add_product">
@@ -1077,10 +1246,14 @@ def render_items(items, target_cat, active_sessions, session_prods, products, fr
                 </div>
                 '''
 
-            cancel_btn = f'<a href="/admin/session/cancel/{active_session["id"]}" class="btn btn-outline-secondary btn-sm fw-bold py-2 px-2" onclick="return confirm(\'هل أنت تأكد من إلغاء هذه الجلسة دون احتساب أرباح؟\');" title="إلغاء الحجز">🚫 إلغاء</a>' if user_can('cancel_session') else ''
+            cancel_btn = f'''
+                <form method="POST" action="/admin/session/cancel/{active_session["id"]}" style="display:inline;" onsubmit="return confirm('هل أنت متأكد من إلغاء هذه الجلسة دون احتساب أرباح؟');">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm fw-bold py-2 px-2 h-100" title="إلغاء الحجز">🚫 إلغاء</button>
+                </form>
+            ''' if user_can('cancel_session') else ''
             
             if user_can('end_session'):
-                html += f'''
+                html_out += f'''
                 <div class="d-flex gap-1 mt-1">
                     <button class="btn btn-danger flex-grow-1 btn-sm fw-bold py-2 fs-6" onclick="previewEndSession({active_session['id']})">
                         📋 تفاصيل وإنهاء الجلسة 🛑
@@ -1089,13 +1262,13 @@ def render_items(items, target_cat, active_sessions, session_prods, products, fr
                 </div>
                 '''
             elif cancel_btn:
-                html += f'<div class="mt-1">{cancel_btn}</div>'
+                html_out += f'<div class="mt-1">{cancel_btn}</div>'
 
-            html += '</div>'
+            html_out += '</div>'
         else:
-            play_mode_label = item['play_mode'] if item['play_mode'] else "بالوقت"
-            html += f'''
-                <div class="bg-dark p-3 rounded-3 text-center my-4 border border-secondary">
+            play_mode_label = html.escape(str(item['play_mode'])) if item['play_mode'] else "بالوقت"
+            html_out += f'''
+                <div class="p-3 rounded-3 text-center my-4 border border-secondary" style="background: rgba(6, 10, 20, 0.75);">
                     <small class="text-light opacity-75 d-block mb-1">السعر المحدد للحجز:</small>
                     <span class="badge bg-secondary mb-1">{play_mode_label}</span>
                     <div class="text-warning fw-bold fs-4">{item['price']} د.ع</div>
@@ -1103,24 +1276,26 @@ def render_items(items, target_cat, active_sessions, session_prods, products, fr
             </div>
             '''
             if user_can('start_session'):
-                item_play_mode_escaped = item['play_mode'].replace("'", "\\'") if item['play_mode'] else 'بالوقت'
-                html += f'''
-                <button class="btn btn-glow-cyan w-100 py-2 fs-5 mt-2" data-bs-toggle="modal" data-bs-target="#startSessionModal" onclick="prepareStartSession({item['id']}, '{item['name']}', {item['price']}, '{item_play_mode_escaped}')">
+                js_play_mode = js_str(item['play_mode'] if item['play_mode'] else 'بالوقت')
+                html_out += f'''
+                <button class="btn btn-glow-cyan w-100 py-2 fs-5 mt-2" data-bs-toggle="modal" data-bs-target="#startSessionModal" onclick="prepareStartSession({item['id']}, {js_item_name}, {item['price']}, {js_play_mode})">
                     بدء حجز ◀
                 </button>
                 '''
                 
-        html += '</div></div>'
-    html += '</div>'
-    return Markup(html)
+        html_out += '</div></div>'
+    html_out += '</div>'
+    return Markup(html_out)
 
-@admin_bp.add_app_template_global
-def render_products(products, cat_name):
-    filtered = [p for p in products if p['category'] == cat_name]
+admin_bp.add_app_template_global(render_items)
+
+def render_products(products, cat_name, cat_key=""):
+    valid_targets = {t.strip() for t in (cat_name, cat_key) if t and str(t).strip()}
+    filtered = [p for p in products if (p['category'] or '').strip() in valid_targets]
     if not filtered:
-        return Markup('<div class="alert alert-secondary text-center text-white py-3">لا يوجد منتجات مضافة لهذا القسم حالياً.</div>')
+        return Markup('<div class="empty-state-box">لا يوجد منتجات مضافة لهذا القسم حالياً.</div>')
     
-    html = '''
+    html_out = '''
     <div class="table-responsive">
         <table class="table table-dark-custom align-middle">
             <thead>
@@ -1129,21 +1304,34 @@ def render_products(products, cat_name):
             <tbody>
     '''
     for p in filtered:
-        img_html = f'<img src="{p["image_url"]}" class="rounded border border-secondary" style="width: 60px; height: 60px; object-fit: contain; background-color: #0f172a; padding: 2px;">' if p['image_url'] else '<span class="badge bg-secondary">بدون صورة</span>'
-        html += f'''
+        img_url_safe = html.escape(str(p["image_url"]), quote=True) if p['image_url'] else ''
+        img_html = f'<img src="{img_url_safe}" class="rounded border border-secondary" style="width: 60px; height: 60px; object-fit: contain; background-color: #0f172a; padding: 2px;">' if p['image_url'] else '<span class="badge bg-dark border border-secondary text-light">بدون صورة</span>'
+        safe_prod_name = html.escape(str(p['name']))
+        js_prod_name = js_str(p['name'])
+        
+        edit_btn = f'<button class="btn btn-sm btn-outline-warning me-1" data-bs-toggle="modal" data-bs-target="#editProductModal" onclick="prepareEditProduct({p["id"]}, {js_prod_name}, {p["price"]})">✏️ تعديل</button>' if user_can('manage_products') else ''
+        delete_form = f'''
+            <form method="POST" action="/admin/product/delete/{p["id"]}" style="display:inline;" onsubmit="return confirm('هل تريد حذف هذا المنتج؟');">
+                <button type="submit" class="btn btn-sm btn-outline-danger">🗑️ حذف</button>
+            </form>
+        ''' if user_can('manage_products') else ''
+
+        html_out += f'''
         <tr>
             <td>{img_html}</td>
-            <td class="fw-bold fs-5 text-white">{p['name']}</td>
+            <td class="fw-bold fs-5 text-white">{safe_prod_name}</td>
             <td class="text-warning fw-bold fs-5">{p['price']} د.ع</td>
             <td>
-                <button class="btn btn-sm btn-glow-green me-1 fw-bold" data-bs-toggle="modal" data-bs-target="#directSaleModal" onclick="prepareDirectSale({p['id']}, \'{p['name']}\', {p['price']})">🛍️ بيع مباشر</button>
-                {f'<button class="btn btn-sm btn-outline-warning me-1" data-bs-toggle="modal" data-bs-target="#editProductModal" onclick="prepareEditProduct({p["id"]}, \'{p["name"]}\', {p["price"]})">✏️ تعديل</button>' if user_can('manage_products') else ''}
-                {f'<a href="/admin/product/delete/{p["id"]}" class="btn btn-sm btn-outline-danger" onclick="return confirm(\'هل تريد حذف هذا المنتج؟\');">🗑️ حذف</a>' if user_can('manage_products') else ''}
+                <button class="btn btn-sm btn-glow-green me-1 fw-bold" data-bs-toggle="modal" data-bs-target="#directSaleModal" onclick="prepareDirectSale({p['id']}, {js_prod_name}, {p['price']})">🛍️ بيع مباشر</button>
+                {edit_btn}
+                {delete_form}
             </td>
         </tr>
         '''
-    html += '</tbody></table></div>'
-    return Markup(html)
+    html_out += '</tbody></table></div>'
+    return Markup(html_out)
+
+admin_bp.add_app_template_global(render_products)
 
 @admin_bp.route('/product/direct_sale', methods=['POST'])
 @login_required
@@ -1153,7 +1341,7 @@ def direct_sale():
         return redirect(url_for('admin.dashboard'))
 
     product_id = request.form.get('product_id')
-    quantity = int(request.form.get('quantity', 1))
+    quantity = max(1, safe_int(request.form.get('quantity'), 1))
     
     if not product_id:
         flash('يرجى اختيار المنتج المراد بيعه!', 'danger')
@@ -1192,7 +1380,7 @@ def create_section():
         flash('ليس لديك صلاحية إنشاء قسم!', 'danger')
         return redirect(url_for('admin.dashboard'))
 
-    section_name = request.form.get('section_name')
+    section_name = request.form.get('section_name', '').strip()
     section_type = request.form.get('section_type', 'game')
     section_icon = request.form.get('section_icon', '🎮')
     section_color = request.form.get('section_color', '#ec4899')
@@ -1207,7 +1395,7 @@ def create_section():
     flash(f'تم إنشاء القسم ({section_name}) بنجاح!', 'success')
     return redirect(url_for('admin.dashboard'))
 
-@admin_bp.route('/section/delete/<int:section_id>')
+@admin_bp.route('/section/delete/<int:section_id>', methods=['POST'])
 @login_required
 def delete_section(section_id):
     if not user_can('manage_sections'):
@@ -1219,13 +1407,13 @@ def delete_section(section_id):
     if cat:
         log_deletion('حذف قسم كامل', cat['name'], f"تم حذف القسم ({cat['name']}) مع كافة عناصره وأجهزته ومنتجاته.")
         conn.execute('DELETE FROM items WHERE category = ?', (cat['key'],))
-        conn.execute('DELETE FROM products WHERE category = ?', (cat['name'],))
+        conn.execute('DELETE FROM products WHERE TRIM(category) = ?', (cat['name'].strip(),))
         conn.execute('DELETE FROM categories WHERE id = ?', (section_id,))
         conn.commit()
         flash('تم حذف القسم وكافة عناصره بنجاح!', 'success')
     return redirect(url_for('admin.dashboard'))
 
-@admin_bp.route('/item/delete/<int:item_id>')
+@admin_bp.route('/item/delete/<int:item_id>', methods=['POST'])
 @login_required
 def delete_item(item_id):
     if not user_can('manage_items'):
@@ -1249,7 +1437,7 @@ def update_item_price():
         return redirect(url_for('admin.dashboard'))
 
     item_id = request.form.get('item_id')
-    new_price = float(request.form.get('price', 0))
+    new_price = safe_float(request.form.get('price'), 0.0)
     
     conn = db.get_db()
     conn.execute('UPDATE items SET price = ? WHERE id = ?', (new_price, item_id))
@@ -1265,8 +1453,8 @@ def update_product():
         return redirect(url_for('admin.dashboard'))
 
     prod_id = request.form.get('product_id')
-    name = request.form.get('name')
-    price = float(request.form.get('price', 0))
+    name = request.form.get('name', '').strip()
+    price = safe_float(request.form.get('price'), 0.0)
     
     conn = db.get_db()
     conn.execute('UPDATE products SET name = ?, price = ? WHERE id = ?', (name, price, prod_id))
@@ -1274,7 +1462,7 @@ def update_product():
     flash('تم تعديل بيانات المنتج بنجاح!', 'success')
     return redirect(url_for('admin.dashboard'))
 
-@admin_bp.route('/product/delete/<int:product_id>')
+@admin_bp.route('/product/delete/<int:product_id>', methods=['POST'])
 @login_required
 def delete_product(product_id):
     if not user_can('manage_products'):
@@ -1401,8 +1589,8 @@ def renew_session():
     prev_carried = float(sess_dict.get('carried_over_cost') or 0.0)
     total_carried = prev_carried + float(old_play_cost)
 
-    if custom_price and custom_price.replace('.', '', 1).isdigit() and item:
-        new_price_val = float(custom_price)
+    if user_can('edit_item_price') and custom_price and custom_price.replace('.', '', 1).isdigit() and item:
+        new_price_val = safe_float(custom_price, item['price'])
         if new_price_val != item['price']:
             conn.execute('UPDATE items SET price = ? WHERE id = ?', (new_price_val, item['id']))
 
@@ -1500,8 +1688,8 @@ def start_session():
     
     conn = db.get_db()
     
-    if custom_price and custom_price.replace('.', '', 1).isdigit():
-        conn.execute('UPDATE items SET price = ? WHERE id = ?', (float(custom_price), item_id))
+    if user_can('edit_item_price') and custom_price and custom_price.replace('.', '', 1).isdigit():
+        conn.execute('UPDATE items SET price = ? WHERE id = ?', (safe_float(custom_price, 0.0), item_id))
         conn.commit()
 
     item = conn.execute('SELECT * FROM items WHERE id = ?', (item_id,)).fetchone()
@@ -1531,13 +1719,16 @@ def create_product():
         file.save(os.path.join(UPLOAD_FOLDER, filename))
         image_path = f"/{UPLOAD_FOLDER}/{filename}"
     
+    prod_name = request.form.get('name', '').strip()
+    prod_cat = request.form.get('category', '').strip()
+    
     with db.get_db() as conn:
         conn.execute('''
             INSERT INTO products (name, category, price, image_url, show_to_user)
             VALUES (?, ?, ?, ?, 1)
-        ''', (request.form['name'], request.form['category'], float(request.form['price']), image_path))
+        ''', (prod_name, prod_cat, safe_float(request.form.get('price'), 0.0), image_path))
         conn.commit()
-    flash('تم إضافة المنتج بنجاح!', 'success')
+    flash(f'تم إضافة ({prod_name}) إلى ({prod_cat}) بنجاح!', 'success')
     return redirect(url_for('admin.dashboard'))
 
 @admin_bp.route('/item/create', methods=['POST'])
@@ -1551,7 +1742,7 @@ def create_item():
         conn.execute('''
             INSERT INTO items (category, name, play_mode, pricing_type, price)
             VALUES (?, ?, ?, ?, ?)
-        ''', (request.form['category'], request.form['name'], request.form['play_mode'], request.form['play_mode'], float(request.form['price'])))
+        ''', (request.form['category'].strip(), request.form['name'].strip(), request.form['play_mode'], request.form['play_mode'], safe_float(request.form.get('price'), 0.0)))
         conn.commit()
     flash('تم إضافة العنصر بنجاح!', 'success')
     return redirect(url_for('admin.dashboard'))
@@ -1565,7 +1756,7 @@ def add_product_to_session():
 
     sess_id = request.form['session_id']
     prod_id = request.form['product_id']
-    qty = int(request.form['quantity'])
+    qty = max(1, safe_int(request.form.get('quantity'), 1))
     
     conn = db.get_db()
     prod = conn.execute('SELECT * FROM products WHERE id = ?', (prod_id,)).fetchone()
@@ -1579,11 +1770,11 @@ def add_product_to_session():
         
     return redirect(url_for('admin.dashboard'))
 
-@admin_bp.route('/session/product/delete/<int:sp_id>')
+@admin_bp.route('/session/product/delete/<int:sp_id>', methods=['POST'])
 @login_required
 def delete_session_product(sp_id):
-    if not user_can('delete_session_product') and not user_can('add_product_to_session'):
-        flash('ليس لديك صلاحية!', 'danger')
+    if not user_can('delete_session_product'):
+        flash('ليس لديك صلاحية حذف الطلبات من الجلسة!', 'danger')
         return redirect(url_for('admin.dashboard'))
 
     conn = db.get_db()
@@ -1595,11 +1786,11 @@ def delete_session_product(sp_id):
         flash('تم حذف الطلب من الجلسة بنجاح!', 'success')
     return redirect(url_for('admin.dashboard'))
 
-@admin_bp.route('/session/cancel/<int:session_id>')
+@admin_bp.route('/session/cancel/<int:session_id>', methods=['POST'])
 @login_required
 def cancel_session(session_id):
-    if not user_can('cancel_session') and not user_can('end_session'):
-        flash('ليس لديك صلاحية!', 'danger')
+    if not user_can('cancel_session'):
+        flash('ليس لديك صلاحية إلغاء الجلسات!', 'danger')
         return redirect(url_for('admin.dashboard'))
 
     conn = db.get_db()
@@ -1691,7 +1882,7 @@ def staff():
         
         try:
             conn.execute('INSERT INTO users (username, password_hash, plain_password, full_name, role, permissions) VALUES (?, ?, ?, ?, "staff", ?)',
-                         (username, password_hash, plain_pass, full_name, perms))
+                         (username, password_hash, '********', full_name, perms))
             conn.commit()
             flash('تم إضافة حساب الموظف وتحديد صلاحياته بنجاح!', 'success')
             return redirect(url_for('admin.staff'))
@@ -1722,7 +1913,7 @@ def staff():
             <h5 class="text-warning mb-3">+ إضافة موظف جديد وتخصيص صلاحياته</h5>
             <div class="row g-3">
                 <div class="col-md-4"><label class="mb-1 text-white">اسم المستخدم</label><input type="text" name="username" class="form-control bg-secondary text-white border-0" required></div>
-                <div class="col-md-4"><label class="mb-1 text-white">كلمة المرور</label><input type="text" name="password" class="form-control bg-secondary text-white border-0" required></div>
+                <div class="col-md-4"><label class="mb-1 text-white">كلمة المرور</label><input type="password" name="password" class="form-control bg-secondary text-white border-0" required></div>
                 <div class="col-md-4"><label class="mb-1 text-white">الاسم الكامل للموظف</label><input type="text" name="full_name" class="form-control bg-secondary text-white border-0" required></div>
                 
                 <div class="col-12 mt-3">
@@ -1746,13 +1937,13 @@ def staff():
         <h4 class="fw-bold text-white mb-3">قائمة الموظفين الحاليين</h4>
         <div class="table-responsive">
             <table class="table table-dark-custom align-middle">
-                <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>كلمة السر</th><th>الصلاحيات الممنوحة</th><th>إجراءات</th></tr></thead>
+                <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الأمان</th><th>الصلاحيات الممنوحة</th><th>إجراءات</th></tr></thead>
                 <tbody>
                     {% for u in users %}
                     <tr>
                         <td class="fw-bold text-white">{{ u['full_name'] }}</td>
                         <td class="text-info">{{ u['username'] }}</td>
-                        <td><code class="text-warning">{{ u['plain_password'] }}</code></td>
+                        <td><span class="badge bg-dark border border-secondary text-success">🔒 مشفرة</span></td>
                         <td>
                             {% set u_perms = json_loads(u['permissions']) if u['permissions'] else [] %}
                             {% for p in u_perms %}
@@ -1762,17 +1953,68 @@ def staff():
                             {% endfor %}
                         </td>
                         <td>
-                            <a href="{{ url_for('admin.delete_staff', user_id=u['id']) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('هل أنت تأكد من حذف هذا الموظف؟');">🗑️ حذف</a>
+                            <button type="button" class="btn btn-sm btn-outline-warning me-1" onclick="openResetStaffPassModal({{ u['id'] }}, {{ js_str(u['full_name']) }})">🔑 تعيين كلمة سر</button>
+                            <form method="POST" action="{{ url_for('admin.delete_staff', user_id=u['id']) }}" class="d-inline" onsubmit="return confirm('هل أنت متأكد من حذف هذا الموظف؟');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">🗑️ حذف</button>
+                            </form>
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-    </div></body></html>
+    </div>
+
+    <!-- Modal إعادة تعيين كلمة سر موظف -->
+    <div class="modal fade" id="resetStaffPassModal" tabindex="-1">
+        <div class="modal-dialog">
+            <form method="POST" id="resetStaffPassForm" class="modal-content glass-card text-white border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title fw-bold text-warning">🔑 تعيين كلمة مرور جديدة للموظف</h5>
+                </div>
+                <div class="modal-body">
+                    <h5 id="resetStaffName" class="text-info fw-bold mb-3"></h5>
+                    <div class="mb-3">
+                        <label class="fw-bold mb-1">كلمة المرور الجديدة:</label>
+                        <input type="password" name="new_password" class="form-control bg-dark text-white border-secondary" required>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="submit" class="btn btn-glow-green w-100 py-2 fs-5">حفظ كلمة المرور الجديدة 💾</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function openResetStaffPassModal(userId, fullName) {
+            document.getElementById('resetStaffName').innerText = fullName;
+            document.getElementById('resetStaffPassForm').action = '/admin/staff/reset_password/' + userId;
+            let modal = new bootstrap.Modal(document.getElementById('resetStaffPassModal'));
+            modal.show();
+        }
+    </script>
+    </body></html>
     ''', COMMON_STYLE=COMMON_STYLE, users=users, ALL_PERMISSIONS=ALL_PERMISSIONS, json_loads=json.loads)
 
-@admin_bp.route('/staff/delete/<int:user_id>')
+@admin_bp.route('/staff/reset_password/<int:user_id>', methods=['POST'])
+@login_required
+def reset_staff_password(user_id):
+    if not user_can('manage_staff'):
+        flash('ليس لديك صلاحية!', 'danger')
+        return redirect(url_for('admin.dashboard'))
+    new_password = request.form.get('new_password', '').strip()
+    if new_password:
+        conn = db.get_db()
+        hashed = generate_password_hash(new_password)
+        conn.execute('UPDATE users SET password_hash = ?, plain_password = ? WHERE id = ? AND role != "admin"',
+                     (hashed, '********', user_id))
+        conn.commit()
+        flash('تم تعيين كلمة المرور الجديدة للموظف بنجاح!', 'success')
+    return redirect(url_for('admin.staff'))
+
+@admin_bp.route('/staff/delete/<int:user_id>', methods=['POST'])
 @login_required
 def delete_staff(user_id):
     if not user_can('manage_staff'):
@@ -1799,7 +2041,7 @@ def update_profile():
     if new_password:
         hashed = generate_password_hash(new_password)
         conn.execute('UPDATE users SET username = ?, password_hash = ?, plain_password = ? WHERE id = ?',
-                     (new_username, hashed, new_password, user_id))
+                     (new_username, hashed, '********', user_id))
     else:
         conn.execute('UPDATE users SET username = ? WHERE id = ?', (new_username, user_id))
         
@@ -1819,8 +2061,8 @@ def reset_reports():
     conn = db.get_db()
     conn.execute('INSERT OR REPLACE INTO system_settings (key, value) VALUES ("last_reset_time", ?)', (now_str,))
     conn.commit()
-    log_deletion( 'تصفير الحسابات اليدوي', f"تم تصفير حسابات السجل يدوياً والبدء من جديد بتاريخ {now_str}")
-    flash(f'تم تصفير الحسابات يدوياً بنجاح! تم بدء السجل الجديدة من توقيت: {now_str}', 'success')
+    log_deletion('تصفير الحسابات اليدوي', 'سجل التقارير', f"تم تصفير حسابات السجل يدوياً والبدء من جديد بتاريخ {now_str}")
+    flash(f'تم تصفير الحسابات يدوياً بنجاح! تم بدء السجل الجديد من توقيت: {now_str}', 'success')
     return redirect(url_for('admin.reports', period='today'))
 
 @admin_bp.route('/reports')
@@ -1881,6 +2123,105 @@ def reports():
         staff_summary[staff_name]['grand_total'] += (s['total_cost'] or 0.0)
         staff_summary[staff_name]['count'] += 1
 
+    # --- بداية إضافة حساب مجموع أرباح كل قسم ---
+    all_categories = conn.execute('SELECT * FROM categories').fetchall()
+    sections_summary = []
+    cat_by_key = {}
+    cat_by_name = {}
+
+    for c in all_categories:
+        entry = {
+            'id': c['id'],
+            'name': c['name'],
+            'icon': c['icon'] or '📂',
+            'color': c['color'] or '#38bdf8',
+            'type': c['type'] or 'game',
+            'total': 0.0,
+            'count': 0
+        }
+        sections_summary.append(entry)
+        if c['key']:
+            cat_by_key[c['key'].strip()] = entry
+        if c['name']:
+            cat_by_name[c['name'].strip()] = entry
+
+    all_items = conn.execute('SELECT id, name, category FROM items').fetchall()
+    item_id_to_cat = {}
+    item_name_to_cat = {}
+    for it in all_items:
+        it_cat = (it['category'] or '').strip()
+        cat_entry = cat_by_key.get(it_cat) or cat_by_name.get(it_cat)
+        if cat_entry:
+            item_id_to_cat[it['id']] = cat_entry
+            item_name_to_cat[it['name']] = cat_entry
+
+    all_products = conn.execute('SELECT name, category FROM products').fetchall()
+    prod_name_to_cat = {}
+    for pr in all_products:
+        pr_cat = (pr['category'] or '').strip()
+        cat_entry = cat_by_name.get(pr_cat) or cat_by_key.get(pr_cat)
+        if cat_entry:
+            prod_name_to_cat[pr['name']] = cat_entry
+
+    other_total = 0.0
+    other_count = 0
+
+    for s in sessions:
+        p_cost = float(s['play_cost'] or 0.0)
+        if p_cost > 0:
+            cat_entry = item_id_to_cat.get(s['item_id']) or item_name_to_cat.get(s['item_name'])
+            if cat_entry:
+                cat_entry['total'] += p_cost
+                cat_entry['count'] += 1
+            else:
+                other_total += p_cost
+                other_count += 1
+
+    session_ids = [s['id'] for s in sessions]
+    if session_ids:
+        placeholders = ','.join(['?'] * len(session_ids))
+        sp_rows = conn.execute(
+            f'SELECT product_name, quantity, total FROM session_products WHERE session_id IN ({placeholders})',
+            session_ids
+        ).fetchall()
+        for sp in sp_rows:
+            sp_total = float(sp['total'] or 0.0)
+            cat_entry = prod_name_to_cat.get(sp['product_name'])
+            if cat_entry:
+                cat_entry['total'] += sp_total
+                cat_entry['count'] += int(sp['quantity'] or 1)
+            else:
+                other_total += sp_total
+                other_count += int(sp['quantity'] or 1)
+
+    if other_total > 0:
+        sections_summary.append({
+            'id': 0,
+            'name': 'أقسام محذوفة / غير مصنفة',
+            'icon': '📦',
+            'color': '#94a3b8',
+            'type': 'other',
+            'total': other_total,
+            'count': other_count
+        })
+
+    calc_sum = sum(x['total'] for x in sections_summary)
+    diff = total_sessions_cost - calc_sum
+    if abs(diff) >= 1:
+        if sections_summary and sections_summary[-1]['id'] == 0:
+            sections_summary[-1]['total'] += diff
+        else:
+            sections_summary.append({
+                'id': 0,
+                'name': 'فروقات تعديل يدوي / غير مصنفة',
+                'icon': '📦',
+                'color': '#94a3b8',
+                'type': 'other',
+                'total': diff,
+                'count': 0
+            })
+    # --- نهاية إضافة حساب مجموع أرباح كل قسم ---
+
     deleted_logs = []
     if session.get('role') == 'admin':
         deleted_logs = conn.execute('SELECT * FROM deleted_logs ORDER BY id DESC LIMIT 200').fetchall()
@@ -1908,12 +2249,15 @@ def reports():
                 </div>
 
                 <div class="d-flex gap-2 flex-wrap">
+                    <button type="button" class="btn btn-glow-purple rounded-pill px-3 fw-bold shadow" data-bs-toggle="modal" data-bs-target="#sectionsTotalsModal">
+                        📂 مجموع كل قسم
+                    </button>
                     {% if session['role'] == 'admin' %}
                     <button type="button" class="btn btn-danger rounded-pill px-3 fw-bold shadow" data-bs-toggle="modal" data-bs-target="#deletedLogsModal">
                         🗑️ سجل المحذوفات والملغيات ({{ deleted_logs|length }})
                     </button>
 
-                    <form method="POST" action="{{ url_for('admin.reset_reports') }}" onsubmit="return confirm('هل أنت تأكد من تصفير الحسابات والبدء من جديد؟ سيتم تصفير سجل السجل  ويبدأ الحساب من الآن.');">
+                    <form method="POST" action="{{ url_for('admin.reset_reports') }}" onsubmit="return confirm('هل أنت متأكد من تصفير الحسابات والبدء من جديد؟ سيتم تصفير السجل ويبدأ الحساب من الآن.');">
                         <button type="submit" class="btn btn-outline-danger rounded-pill px-3 fw-bold">🔄 تصفير الحسابات اليدوي</button>
                     </form>
                     {% endif %}
@@ -1931,7 +2275,7 @@ def reports():
                 <div class="text-center mb-3">
                     {% if last_reset_time %}
                         <span class="badge bg-dark border border-secondary text-info fs-6 px-3 py-2">
-                            ⏱️ السجل بداء منذ آخر تصفير يدوي: <strong class="text-warning font-monospace">{{ last_reset_time }}</strong> 
+                            ⏱️ السجل بدأ منذ آخر تصفير يدوي: <strong class="text-warning font-monospace">{{ last_reset_time }}</strong> 
                         </span>
                     {% else %}
                         <span class="badge bg-dark border border-secondary text-info fs-6 px-3 py-2">
@@ -1976,7 +2320,7 @@ def reports():
                                 <td class="text-warning fw-bold fs-5">{{ "{:,.0f}".format(s_data['grand_total']) }} د.ع</td>
                             </tr>
                             {% else %}
-                            <tr><td colspan="5" class="text-center text-light py-3">لا توجد مبيعات مسجلة للموظفين في هذه السجل.</td></tr>
+                            <tr><td colspan="5" class="text-center text-light py-3">لا توجد مبيعات مسجلة للموظفين في هذا السجل.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -2013,21 +2357,21 @@ def reports():
                             <td class="no-print">
                                 {% if session['role'] == 'admin' or 'edit_reports' in session['permissions'] %}
                                 <button class="btn btn-sm btn-outline-warning me-1" 
-                                        onclick="openReportEditModal({{ s['id'] }}, '{{ s['item_name'] }}', {{ s['play_cost'] }}, {{ s['products_cost'] }}, {{ s['total_cost'] }})">
+                                        onclick="openReportEditModal({{ s['id'] }}, {{ js_str(s['item_name']) }}, {{ s['play_cost'] }}, {{ s['products_cost'] }}, {{ s['total_cost'] }})">
                                     ✏️ تعديل
                                 </button>
-                                <a href="{{ url_for('admin.delete_report', session_id=s['id'], period=period) }}" 
-                                   class="btn btn-sm btn-outline-danger" 
-                                   onclick="return confirm('هل تريد حذف هذا السجل نهائياً من التقارير والأرباح؟');">
-                                    🗑️ حذف
-                                </a>
+                                <form method="POST" action="{{ url_for('admin.delete_report', session_id=s['id'], period=period) }}" class="d-inline" onsubmit="return confirm('هل تريد حذف هذا السجل نهائياً من التقارير والأرباح؟');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        🗑️ حذف
+                                    </button>
+                                </form>
                                 {% else %}
                                 <span class="text-light opacity-50 small">غير مصرح</span>
                                 {% endif %}
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="9" class="text-center text-light py-4">لا توجد جلسات مكتملة مسجلة في هذه السجل.</td></tr>
+                        <tr><td colspan="9" class="text-center text-light py-4">لا توجد جلسات مكتملة مسجلة في هذا السجل.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -2204,8 +2548,77 @@ def reports():
         </div>
         {% endif %}
 
+        <!-- Modal مجموع أرباح كل قسم -->
+        <div class="modal fade" id="sectionsTotalsModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content glass-card text-white border-info" style="background: #090e1a !important;">
+                    <div class="modal-header border-secondary">
+                        <h5 class="modal-title fw-bold text-info fs-4">📂 مجموع الفلوس المحصّلة لكل قسم</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+                    </div>
+                    <div class="modal-body p-3">
+                        <div class="table-responsive rounded border border-secondary">
+                            <table class="table table-dark table-hover align-middle mb-0" style="--bs-table-bg: #0b1120 !important;">
+                                <thead>
+                                    <tr style="background-color: #1e293b !important;">
+                                        <th style="background-color: #1e293b !important; color: #38bdf8 !important;">اسم القسم</th>
+                                        <th style="background-color: #1e293b !important; color: #38bdf8 !important;">النوع</th>
+                                        <th style="background-color: #1e293b !important; color: #38bdf8 !important;">عدد الجلسات / المبيعات</th>
+                                        <th style="background-color: #1e293b !important; color: #38bdf8 !important;">المجموع المحصّل (د.ع)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for sec in sections_summary %}
+                                    <tr style="border-color: #1e293b !important; background-color: #0b1120 !important;">
+                                        <td class="fw-bold fs-5" style="background-color: #0b1120 !important; color: {{ sec['color'] }};">
+                                            <span class="me-1">{{ sec['icon'] }}</span> {{ sec['name'] }}
+                                        </td>
+                                        <td style="background-color: #0b1120 !important;">
+                                            {% if sec['type'] == 'game' %}
+                                                <span class="badge bg-primary">🎮 أجهزة ولعب</span>
+                                            {% elif sec['type'] == 'product' %}
+                                                <span class="badge bg-success">🥤 مأكولات وخدمات</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">أخرى</span>
+                                            {% endif %}
+                                        </td>
+                                        <td style="background-color: #0b1120 !important;">
+                                            <span class="badge bg-secondary fs-6">{{ sec['count'] }}</span>
+                                        </td>
+                                        <td class="text-warning fw-bold fs-5" style="background-color: #0b1120 !important;">
+                                            {{ "{:,.0f}".format(sec['total']) }} د.ع
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="4" class="text-center text-light py-4" style="background-color: #0b1120 !important;">لا توجد أقسام مسجلة.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background-color: #1e293b !important;">
+                                        <th colspan="3" class="text-white fs-5" style="background-color: #1e293b !important;">المجموع الكلي لكافة الأقسام:</th>
+                                        <th class="text-warning fw-black fs-4" style="background-color: #1e293b !important;">{{ "{:,.0f}".format(total_sessions_cost) }} د.ع</th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-footer border-secondary">
+                        <button type="button" class="btn btn-secondary px-4 fw-bold" data-bs-dismiss="modal">إغلاق</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
         <script>
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text || '';
+                return div.innerHTML;
+            }
+
             function openReportEditModal(id, itemName, playCost, prodCost, totalCost) {
                 document.getElementById('reportSessionId').value = id;
                 document.getElementById('reportItemTitle').innerText = 'الجلسة رقم #' + id + ' (' + itemName + ')';
@@ -2246,7 +2659,7 @@ def reports():
                             data.sessions.forEach(s => {
                                 let prodsHtml = '';
                                 if (s.products_list && s.products_list.length > 0) {
-                                    prodsHtml = s.products_list.map(p => `<span class="badge bg-secondary text-white me-1 mb-1 border border-secondary">${p.product_name} (x${p.quantity}) - ${p.total.toLocaleString()} د.ع</span>`).join('');
+                                    prodsHtml = s.products_list.map(p => `<span class="badge bg-secondary text-white me-1 mb-1 border border-secondary">${escapeHtml(p.product_name)} (x${p.quantity}) - ${p.total.toLocaleString()} د.ع</span>`).join('');
                                 } else {
                                     prodsHtml = '<span class="text-light opacity-75 fst-italic">لا توجد طلبات</span>';
                                 }
@@ -2256,13 +2669,13 @@ def reports():
                                 sessTbody.innerHTML += `
                                     <tr style="border-color: #1e293b !important; background-color: #0b1120 !important;">
                                         <td style="background-color: #0b1120 !important;"><span class="badge bg-secondary text-white fw-bold">#${s.id}</span></td>
-                                        <td style="background-color: #0b1120 !important;" class="fw-bold text-white fs-6">${s.item_name || 'بيع مباشر'}</td>
-                                        <td style="background-color: #0b1120 !important;"><span class="badge ${playModeBadge}">${s.session_type}</span></td>
+                                        <td style="background-color: #0b1120 !important;" class="fw-bold text-white fs-6">${escapeHtml(s.item_name || 'بيع مباشر')}</td>
+                                        <td style="background-color: #0b1120 !important;"><span class="badge ${playModeBadge}">${escapeHtml(s.session_type)}</span></td>
                                         <td style="background-color: #0b1120 !important;" class="text-white fw-bold">${(s.play_cost || 0).toLocaleString()} د.ع</td>
                                         <td style="background-color: #0b1120 !important;">${prodsHtml}</td>
                                         <td style="background-color: #0b1120 !important;" class="text-warning fw-black fs-6">${(s.total_cost || 0).toLocaleString()} د.ع</td>
                                         <td style="background-color: #0b1120 !important;">
-                                            <span class="badge bg-dark border border-secondary text-light font-monospace fs-6 px-2 py-1">⏱️ ${s.target_end_time || '-'}</span>
+                                            <span class="badge bg-dark border border-secondary text-light font-monospace fs-6 px-2 py-1">⏱️ ${escapeHtml(s.target_end_time || '-')}</span>
                                         </td>
                                     </tr>
                                 `;
@@ -2277,7 +2690,7 @@ def reports():
                             data.products_summary.forEach(item => {
                                 prodTbody.innerHTML += `
                                     <tr style="border-color: #1e293b !important; background-color: #0b1120 !important;">
-                                        <td style="background-color: #0b1120 !important;" class="fw-bold text-white">${item.product_name}</td>
+                                        <td style="background-color: #0b1120 !important;" class="fw-bold text-white">${escapeHtml(item.product_name)}</td>
                                         <td style="background-color: #0b1120 !important;"><span class="badge bg-info text-dark fw-bold fs-6 px-3">${item.total_quantity}</span></td>
                                         <td style="background-color: #0b1120 !important;" class="text-warning fw-bold fs-6">${item.total_amount.toLocaleString()} د.ع</td>
                                     </tr>
@@ -2295,7 +2708,7 @@ def reports():
             }
         </script>
     </body></html>
-    ''', COMMON_STYLE=COMMON_STYLE, sessions=sessions, total_sessions_cost=total_sessions_cost, period=period, staff_summary=staff_summary, deleted_logs=deleted_logs, last_reset_time=last_reset_time)
+    ''', COMMON_STYLE=COMMON_STYLE, sessions=sessions, total_sessions_cost=total_sessions_cost, period=period, staff_summary=staff_summary, deleted_logs=deleted_logs, last_reset_time=last_reset_time, sections_summary=sections_summary)
 
 @admin_bp.route('/report/update', methods=['POST'])
 @login_required
@@ -2306,9 +2719,9 @@ def update_report():
 
     session_id = request.form.get('session_id')
     period = request.form.get('period', 'all')
-    play_cost = float(request.form.get('play_cost', 0))
-    products_cost = float(request.form.get('products_cost', 0))
-    total_cost = float(request.form.get('total_cost', 0))
+    play_cost = safe_float(request.form.get('play_cost'), 0.0)
+    products_cost = safe_float(request.form.get('products_cost'), 0.0)
+    total_cost = safe_float(request.form.get('total_cost'), 0.0)
 
     conn = db.get_db()
     conn.execute('''
@@ -2321,7 +2734,7 @@ def update_report():
     flash(f'تم تعديل الفاتورة رقم #{session_id} وحفظ البيانات الجديدة بنجاح!', 'success')
     return redirect(url_for('admin.reports', period=period))
 
-@admin_bp.route('/report/delete/<int:session_id>')
+@admin_bp.route('/report/delete/<int:session_id>', methods=['POST'])
 @login_required
 def delete_report(session_id):
     if not user_can('edit_reports'):
